@@ -12,6 +12,7 @@ stonecutter parameters {
 
     replacements.string(current.parsed >= "1.21.11") {
         replace("ResourceLocation", "Identifier")
+        replace("getIdentifier", "getIdentifier")
     }
     replacements.string(current.parsed >= "26.1") {
         replace(".getBlockHolder()", ".typeHolder()")

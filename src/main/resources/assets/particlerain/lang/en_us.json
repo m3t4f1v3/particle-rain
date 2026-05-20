@@ -88,6 +88,8 @@
   "particlerain.density.description": "The frequency the particle will spawn at relative to the overall particle density.",
   "particlerain.weather": "When to spawn",
   "particlerain.precipitation": "Biome precipitation",
+  "particlerain.structureList": "Structure bounding boxes",
+  "particlerain.structureList.description": "Allows or blocks spawning inside the selected structure bounding boxes, depending on list mode.",
   "particlerain.needsSkyAccess": "Requires access to sky",
   "particlerain.spawnPos": "Spawn position",
 

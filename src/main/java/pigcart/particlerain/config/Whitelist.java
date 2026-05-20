@@ -8,6 +8,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.levelgen.structure.Structure;
 import pigcart.particlerain.VersionUtil;
 import pigcart.particlerain.config.ConfigResponders.*;
 
@@ -109,6 +110,28 @@ public abstract class Whitelist<T> {
             super(Registries.BIOME);
             this.entries = new ArrayList<>();
         }
+        @Override
+        public ArrayList<String> getEntries() {
+            return entries;
+        }
+    }
+
+    @OverrideName("Whitelist")
+    public static class StructureList extends Whitelist<Structure> {
+        @NoSubMenu
+        @Dropdown(SupplyStructures.class)
+        public ArrayList<String> entries;
+
+        StructureList(boolean isWhitelist, String... structures) {
+            super(Registries.STRUCTURE, isWhitelist);
+            this.entries = new ArrayList<>(List.of(structures));
+        }
+
+        public StructureList() {
+            super(Registries.STRUCTURE);
+            this.entries = new ArrayList<>();
+        }
+
         @Override
         public ArrayList<String> getEntries() {
             return entries;

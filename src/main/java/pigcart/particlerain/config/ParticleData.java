@@ -37,6 +37,7 @@ public class ParticleData {
     public void updateTransientVariables() {
         biomeList.populateInternalLists();
         blockList.populateInternalLists();
+        structureList.populateInternalLists();
         setPresetParticle();
     }
     public void setPresetParticle() {
@@ -66,6 +67,7 @@ public class ParticleData {
     public ArrayList<Biome.Precipitation> precipitation = new ArrayList<>(List.of(Biome.Precipitation.RAIN));
     public Whitelist.BiomeList biomeList = new Whitelist.BiomeList();
     public Whitelist.BlockList blockList = new Whitelist.BlockList();
+    public Whitelist.StructureList structureList = new Whitelist.StructureList();
     public Boolean needsSkyAccess = true;
     public SpawnPos spawnPos = SpawnPos.SKY;
     @Label(key = "motion")

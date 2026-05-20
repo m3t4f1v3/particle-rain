@@ -19,6 +19,7 @@ import org.joml.Vector3f;
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import pigcart.particlerain.config.ParticleData;
+import pigcart.particlerain.config.ServuxStructureCache;
 import pigcart.particlerain.particle.CustomParticle;
 import pigcart.particlerain.particle.StreakParticle;
 
@@ -35,6 +36,7 @@ public final class ParticleSpawner {
     public static int particleCount = 0;
 
     public static void tick(ClientLevel level, Vec3 cameraPos) {
+        ServuxStructureCache.debugCurrentStructure(level, BlockPos.containing(cameraPos));
         if (particleCount >= config.perf.maxParticleAmount) return;
         tickSkyFX(level, cameraPos);
         tickSurfaceFX(level, cameraPos);
@@ -156,6 +158,8 @@ public final class ParticleSpawner {
                 float x = pos.getX() + relativePos.x + 0.5F;
                 float y = pos.getY() + relativePos.y + 0.5F;
                 float z = pos.getZ() + relativePos.z + 0.5F;
+                pos.set(x, y, z);
+                if (!ServuxStructureCache.allows(pos, opts.structureList, level)) continue;
                 if (opts.usePresetParticle) {
                     if (opts.presetParticleId.equals("particlerain:streak")) {
                         // edge cases upon edge cases upon edge cases upon
@@ -225,8 +229,12 @@ public final class ParticleSpawner {
                     && data.blockList.contains(level.getBlockState(heightmapPos).getBlockHolder())
                 ) {
                     if (data.usePresetParticle) {
+                        pos.set(x, y, z);
+                        if (!ServuxStructureCache.allows(pos, data.structureList, level)) continue;
                         level.addParticle(data.presetParticle, x, y, z, 0, 0, 0);
                     } else {
+                        pos.set(x, y, z);
+                        if (!ServuxStructureCache.allows(pos, data.structureList, level)) continue;
                         Minecraft.getInstance().particleEngine.add(new CustomParticle(level, x, y, z, data));
                     }
                     ticksUntilSkyFXIdle = 100;
@@ -260,6 +268,8 @@ public final class ParticleSpawner {
                         && data.biomeList.contains(biome)
                         && data.blockList.contains(blockState.getBlockHolder())
                 ) {
+                    pos.set(x, y, z);
+                    if (!ServuxStructureCache.allows(pos, data.structureList, level)) continue;
                     if (data.usePresetParticle) {
                         level.addParticle(data.presetParticle, x, y, z, 0, 0, 0);
                     } else {

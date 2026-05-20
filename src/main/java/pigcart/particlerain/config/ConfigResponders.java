@@ -110,6 +110,13 @@ public class ConfigResponders {
         }
     }
 
+    public static class SupplyStructures implements Supplier<List<String>> {
+        public List<String> get() {
+            if (Minecraft.getInstance().level == null) return List.of("[!] §e§l" + Component.translatable("particlerain.suggest").getString());
+            return getRegistryEntries(VersionUtil.getRegistry(Registries.STRUCTURE));
+        }
+    }
+
     public static class ParticleIsCustomAndAlsoUsesCustomTint implements Function<Object, Boolean> {
         public Boolean apply(Object context) {
             ParticleData ctx = (ParticleData) context;
