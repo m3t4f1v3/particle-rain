@@ -3,16 +3,24 @@ package pigcart.particlerain.config;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.Registry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.StructureAccess;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import pigcart.particlerain.VersionUtil;
 
 import java.util.ArrayList;
@@ -20,6 +28,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public final class ServuxStructureCache {
     private static final long STALE_AFTER_TICKS = 20L * 60L * 5L;
@@ -27,6 +36,7 @@ public final class ServuxStructureCache {
     private static final Map<ResourceLocation, StructureRecord> structures = new HashMap<>();
     private static String lastDebugKey = "";
     private static long lastDebugTick = Long.MIN_VALUE;
+    private static BlockPos lastIntegratedUpdatePos = null;
 
     private ServuxStructureCache() {
     }
@@ -37,6 +47,40 @@ public final class ServuxStructureCache {
 
     public static synchronized void prune(long gameTime) {
         structures.values().removeIf(record -> gameTime - record.lastSeenTick > STALE_AFTER_TICKS);
+    }
+
+    public static synchronized void updateFromIntegratedServer(Minecraft client) {
+        if (client.level == null || client.player == null || !client.hasSingleplayerServer()) {
+            return;
+        }
+
+        long gameTime = client.level.getGameTime();
+        if ((gameTime % 20L) != 0L) {
+            return;
+        }
+
+        BlockPos playerPos = BlockPos.containing(client.player.position());
+
+        if (!needsIntegratedRefresh(playerPos)) {
+            return;
+        }
+
+        IntegratedServer server = client.getSingleplayerServer();
+        if (server == null) {
+            clear();
+            lastIntegratedUpdatePos = null;
+            return;
+        }
+
+        ServerLevel world = server.getLevel(client.level.dimension());
+        if (world == null) {
+            clear();
+            lastIntegratedUpdatePos = null;
+            return;
+        }
+
+        int maxRange = client.options.getEffectiveRenderDistance() + 2;
+        refreshFromIntegratedServer(world, playerPos, maxRange, gameTime);
     }
 
     public static synchronized void ingest(CompoundTag tag, long gameTime) {
@@ -61,8 +105,46 @@ public final class ServuxStructureCache {
 
         String message = firstRecord == null
                 ? "ParticleRain Servux cache: loaded 0 structures"
-                : String.format("ParticleRain Servux cache: loaded %d structures, first=%s %s", ingested, firstRecord.id, firstRecord.box);
+            : String.format("ParticleRain Servux cache: loaded %d structures, first=%s %s (%d pieces)", ingested, firstRecord.id, firstRecord.box(), firstRecord.boxes.size());
         Minecraft.getInstance().gui.getChat().addMessage(Component.literal(message));
+        prune(gameTime);
+    }
+
+    private static synchronized void refreshFromIntegratedServer(ServerLevel world, BlockPos playerPos, int maxRange, long gameTime) {
+        structures.clear();
+
+        int minCX = (playerPos.getX() >> 4) - maxRange;
+        int minCZ = (playerPos.getZ() >> 4) - maxRange;
+        int maxCX = (playerPos.getX() >> 4) + maxRange;
+        int maxCZ = (playerPos.getZ() >> 4) + maxRange;
+
+        for (int cz = minCZ; cz <= maxCZ; ++cz) {
+            for (int cx = minCX; cx <= maxCX; ++cx) {
+                ChunkAccess chunk;
+                try {
+                    chunk = world.getChunk(cx, cz, ChunkStatus.STRUCTURE_REFERENCES, false);
+                } catch (Exception ignored) {
+                    continue;
+                }
+
+                if (chunk == null) {
+                    continue;
+                }
+
+                Map<Structure, ?> references = ((StructureAccess) chunk).getAllReferences();
+                for (Structure structure : references.keySet()) {
+                    ResourceLocation id = world.registryAccess().registryOrThrow(Registries.STRUCTURE).getKey(structure);
+                    StructureStart start = ((StructureAccess) chunk).getStartForStructure(structure);
+                    StructureRecord record = readStructure(id, start, gameTime);
+
+                    if (record != null) {
+                        structures.put(record.id, record);
+                    }
+                }
+            }
+        }
+
+        lastIntegratedUpdatePos = playerPos;
         prune(gameTime);
     }
 
@@ -78,12 +160,20 @@ public final class ServuxStructureCache {
         }
 
         for (ResourceLocation id : matchingStructures) {
-            Holder<Structure> holder = level.registryAccess().registryOrThrow(Registries.STRUCTURE)
-                    .getHolder(ResourceKey.create(Registries.STRUCTURE, id))
-                    .orElse(null);
-
-            if (holder != null && list.contains(holder)) {
+            // Check direct ResourceLocation IDs first. 
+            // This is safer on the client where the structure registry is often missing.
+            if (list.ids.contains(id)) {
                 return list.isWhitelist;
+            }
+
+            // Safe registry lookup for tag support (#tag). 
+            // Using .registry() avoids IllegalStateException if the registry is missing.
+            Optional<? extends Registry<Structure>> registryOpt = level.registryAccess().registry(Registries.STRUCTURE);
+            if (registryOpt.isPresent()) {
+                Holder<Structure> holder = registryOpt.get().getHolder(ResourceKey.create(Registries.STRUCTURE, id)).orElse(null);
+                if (holder != null && list.contains(holder)) {
+                    return list.isWhitelist;
+                }
             }
         }
 
@@ -114,7 +204,7 @@ public final class ServuxStructureCache {
         List<ResourceLocation> matchingStructures = new ArrayList<>();
 
         for (StructureRecord record : structures.values()) {
-            if (record.box.isInside(pos)) {
+            if (record.contains(pos)) {
                 matchingStructures.add(record.id);
             }
         }
@@ -130,13 +220,56 @@ public final class ServuxStructureCache {
             return null;
         }
 
-        BoundingBox box = readBox(tag);
+        List<BoundingBox> boxes = readBoxes(tag);
 
-        if (box == null) {
+        if (boxes.isEmpty()) {
             return null;
         }
 
-        return new StructureRecord(id, box, gameTime);
+        return new StructureRecord(id, boxes, gameTime);
+    }
+
+    private static StructureRecord readStructure(ResourceLocation id, StructureStart start, long gameTime) {
+        if (id == null || start == null) {
+            return null;
+        }
+
+        List<BoundingBox> boxes = new ArrayList<>();
+        for (StructurePiece piece : start.getPieces()) {
+            BoundingBox box = piece.getBoundingBox();
+            if (box != null) {
+                boxes.add(box);
+            }
+        }
+
+        if (boxes.isEmpty()) {
+            return null;
+        }
+
+        return new StructureRecord(id, boxes, gameTime);
+    }
+
+    private static List<BoundingBox> readBoxes(CompoundTag tag) {
+        List<BoundingBox> boxes = new ArrayList<>();
+
+        ListTag children = tag.getList("Children", Tag.TAG_COMPOUND);
+        for (Tag element : children) {
+            if (element instanceof CompoundTag pieceTag) {
+                BoundingBox box = readBoxFromCompound(pieceTag);
+                if (box != null) {
+                    boxes.add(box);
+                }
+            }
+        }
+
+        if (boxes.isEmpty()) {
+            BoundingBox box = readBox(tag);
+            if (box != null) {
+                boxes.add(box);
+            }
+        }
+
+        return boxes;
     }
 
     private static ResourceLocation readId(CompoundTag tag) {
@@ -222,6 +355,47 @@ public final class ServuxStructureCache {
         return null;
     }
 
-    private record StructureRecord(ResourceLocation id, BoundingBox box, long lastSeenTick) {
+    private record StructureRecord(ResourceLocation id, List<BoundingBox> boxes, long lastSeenTick) {
+        private BoundingBox box() {
+            BoundingBox first = boxes.get(0);
+            int minX = first.minX();
+            int minY = first.minY();
+            int minZ = first.minZ();
+            int maxX = first.maxX();
+            int maxY = first.maxY();
+            int maxZ = first.maxZ();
+
+            for (int i = 1; i < boxes.size(); ++i) {
+                BoundingBox box = boxes.get(i);
+                minX = Math.min(minX, box.minX());
+                minY = Math.min(minY, box.minY());
+                minZ = Math.min(minZ, box.minZ());
+                maxX = Math.max(maxX, box.maxX());
+                maxY = Math.max(maxY, box.maxY());
+                maxZ = Math.max(maxZ, box.maxZ());
+            }
+
+            return new BoundingBox(minX, minY, minZ, maxX, maxY, maxZ);
+        }
+
+        private boolean contains(BlockPos pos) {
+            for (BoundingBox box : boxes) {
+                if (box.isInside(pos)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    private static boolean needsIntegratedRefresh(BlockPos playerPos) {
+        if (lastIntegratedUpdatePos == null) {
+            return true;
+        }
+
+        return Math.abs(playerPos.getX() - lastIntegratedUpdatePos.getX()) >= 16
+                || Math.abs(playerPos.getY() - lastIntegratedUpdatePos.getY()) >= 16
+                || Math.abs(playerPos.getZ() - lastIntegratedUpdatePos.getZ()) >= 16;
     }
 }

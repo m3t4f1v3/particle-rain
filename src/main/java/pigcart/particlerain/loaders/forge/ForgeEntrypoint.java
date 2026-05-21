@@ -18,14 +18,12 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
-import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.fml.loading.FMLEnvironment;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.RegistryObject;
 import pigcart.particlerain.ParticleLoader;
 import pigcart.particlerain.ParticleRain;
 import pigcart.particlerain.loaders.forge.ServuxStructureNetworking;
-import fi.dy.masa.malilib.network.ClientPacketChannelHandler;
 import pigcart.particlerain.config.ConfigManager;
 import pigcart.particlerain.particle.*;
 
@@ -66,11 +64,6 @@ public class ForgeEntrypoint {
         ParticleRain.STREAK = STREAK.get();
     }
 
-    public static void onClientPlayerLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
-        // Register Servux networking when the client player logs in
-        ServuxStructureNetworking.init();
-    }
-
     public static void onRegisterClientReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener(new SimplePreparableReloadListener<>() {
             @Override
@@ -90,7 +83,6 @@ public class ForgeEntrypoint {
         if (FMLEnvironment.dist.isDedicatedServer()) return;
 
         IEventBus eventBus = FMLJavaModLoadingContext.get().getModEventBus();
-        MinecraftForge.EVENT_BUS.addListener(ForgeEntrypoint::onClientPlayerLoggedIn); // Keep to reset flag on join
         MinecraftForge.EVENT_BUS.addListener(ForgeEntrypoint::onTick);
         MinecraftForge.EVENT_BUS.addListener(ForgeEntrypoint::onRegisterCommands);
         //MinecraftForge.EVENT_BUS.addListener(ForgeEntrypoint::onRegisterReloadListeners);

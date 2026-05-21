@@ -84,11 +84,11 @@ dependencies {
     annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
     compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:0.5.0")!!)
     implementation(jarJar("io.github.llamalad7:mixinextras-forge:0.5.0")) {}
-    compileOnly("maven.modrinth:mafglib:${property("deps.mafglib")}")
-    runtimeOnly("maven.modrinth:mafglib:${property("deps.mafglib")}")
-    compileOnly("maven.modrinth:servuxforged:${property("deps.servuxforged")}")
-    runtimeOnly("maven.modrinth:servuxforged:${property("deps.servuxforged")}")
-    compileOnly("maven.modrinth:iris:${property("deps.iris")}")
+    modCompileOnly("maven.modrinth:mafglib:${property("deps.mafglib")}")
+    modRuntimeOnly("maven.modrinth:mafglib:${property("deps.mafglib")}")
+    modCompileOnly("maven.modrinth:servuxforged:${property("deps.servuxforged")}")
+    // modRuntimeOnly("maven.modrinth:servuxforged:${property("deps.servuxforged")}")
+    modCompileOnly("maven.modrinth:iris:${property("deps.iris")}")
 }
 
 tasks {
