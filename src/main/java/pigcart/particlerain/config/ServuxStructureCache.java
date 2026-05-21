@@ -10,7 +10,6 @@ import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
-import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -103,10 +102,6 @@ public final class ServuxStructureCache {
             }
         }
 
-        String message = firstRecord == null
-                ? "ParticleRain Servux cache: loaded 0 structures"
-            : String.format("ParticleRain Servux cache: loaded %d structures, first=%s %s (%d pieces)", ingested, firstRecord.id, firstRecord.box(), firstRecord.boxes.size());
-        Minecraft.getInstance().gui.getChat().addMessage(Component.literal(message));
         prune(gameTime);
     }
 
@@ -194,10 +189,7 @@ public final class ServuxStructureCache {
         lastDebugKey = debugKey;
         lastDebugTick = gameTime;
 
-        String message = matchingStructures.isEmpty()
-                ? String.format("ParticleRain structure debug: no tracked structure at %s", pos.toShortString())
-                : String.format("ParticleRain structure debug: %s at %s", debugKey, pos.toShortString());
-        Minecraft.getInstance().gui.getChat().addMessage(Component.literal(message));
+        // Debug chat messages removed.
     }
 
     private static List<ResourceLocation> getMatchingStructures(BlockPos pos) {
