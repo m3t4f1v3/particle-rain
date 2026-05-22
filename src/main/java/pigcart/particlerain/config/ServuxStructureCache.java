@@ -28,11 +28,25 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class ServuxStructureCache {
     private static final long STALE_AFTER_TICKS = 20L * 60L * 5L;
     private static final long DEBUG_PRINT_INTERVAL = 20L;
+    private static final ExecutorService STRUCTURE_SCAN_EXECUTOR = Executors.newSingleThreadExecutor(new ThreadFactory() {
+        @Override
+        public Thread newThread(Runnable task) {
+            Thread thread = new Thread(task, "ParticleRain Structure Scan");
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
     private static final Map<ResourceLocation, StructureRecord> structures = new HashMap<>();
+    private static final AtomicBoolean integratedScanRunning = new AtomicBoolean(false);
     private static String lastDebugKey = "";
     private static long lastDebugTick = Long.MIN_VALUE;
     private static BlockPos lastIntegratedUpdatePos = null;
@@ -78,8 +92,26 @@ public final class ServuxStructureCache {
             return;
         }
 
+        if (!integratedScanRunning.compareAndSet(false, true)) {
+            return;
+        }
+
         int maxRange = client.options.getEffectiveRenderDistance() + 2;
-        refreshFromIntegratedServer(world, playerPos, maxRange, gameTime);
+        CompletableFuture
+                .supplyAsync(() -> scanFromIntegratedServer(world, playerPos, maxRange, gameTime), STRUCTURE_SCAN_EXECUTOR)
+                .whenComplete((snapshot, throwable) -> client.execute(() -> {
+                    try {
+                        if (throwable != null) {
+                            return;
+                        }
+
+                        if (snapshot != null) {
+                            applyIntegratedSnapshot(snapshot, playerPos, gameTime);
+                        }
+                    } finally {
+                        integratedScanRunning.set(false);
+                    }
+                }));
     }
 
     public static synchronized void ingest(CompoundTag tag, long gameTime) {
@@ -105,9 +137,8 @@ public final class ServuxStructureCache {
         prune(gameTime);
     }
 
-    private static synchronized void refreshFromIntegratedServer(ServerLevel world, BlockPos playerPos, int maxRange, long gameTime) {
-        structures.clear();
-
+    private static Map<ResourceLocation, StructureRecord> scanFromIntegratedServer(ServerLevel world, BlockPos playerPos, int maxRange, long gameTime) {
+        Map<ResourceLocation, StructureRecord> snapshot = new HashMap<>();
         int minCX = (playerPos.getX() >> 4) - maxRange;
         int minCZ = (playerPos.getZ() >> 4) - maxRange;
         int maxCX = (playerPos.getX() >> 4) + maxRange;
@@ -133,12 +164,18 @@ public final class ServuxStructureCache {
                     StructureRecord record = readStructure(id, start, gameTime);
 
                     if (record != null) {
-                        structures.put(record.id, record);
+                        snapshot.put(record.id, record);
                     }
                 }
             }
         }
 
+        return snapshot;
+    }
+
+    private static synchronized void applyIntegratedSnapshot(Map<ResourceLocation, StructureRecord> snapshot, BlockPos playerPos, long gameTime) {
+        structures.clear();
+        structures.putAll(snapshot);
         lastIntegratedUpdatePos = playerPos;
         prune(gameTime);
     }
